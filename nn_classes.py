@@ -62,7 +62,6 @@ class DataGenerator_uniform:
         
         # initialize random truth + background states with shallow water model for 1000 time steps
         parameters_truth = np.array([bounds_param[i][0] for i in range(3)])
-        #+(bounds_param[i][1]-bounds_param[i][0])/2
         parameters_bg = np.zeros((nens,3))
         for i in range(len(bounds_param)):
             parameters_bg[:,i] = np.around(np.random.uniform(bounds_param[i][0],bounds_param[i][1],nens),5)
