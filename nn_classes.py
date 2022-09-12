@@ -133,7 +133,6 @@ class DataGenerator_uniform:
             np.savetxt('data/analysis/'+str(i)+'.csv',val_sample,delimiter=',',fmt=['%f']*3*n)
             obs_samples[:,:] = obs
             np.savetxt('data/obs/'+str(i)+'.csv',obs_samples,delimiter=',',fmt=['%f']*3*n)
-        print(len(H)/750)    
         # saves labels for training and validation
         np.savetxt('data/background/labels_raw.csv',labels_train.T,delimiter=',',fmt=['%f','%f','%f'],header='alpha,phi,h',comments='')
         np.savetxt('data/truth/labels_raw.csv',labels_val.T,delimiter=',',fmt=['%f','%f','%f'],header='alpha,phi,h',comments='')
