@@ -26,6 +26,7 @@ from pyro.infer import SVI, Trace_ELBO, Predictive
 from tqdm.auto import trange, tqdm
 from pyro import poutine
 import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestRegressor
 
 def create_folder_path(path):
     MYDIR = (path)
@@ -172,7 +173,19 @@ class DataGenerator_ml_init:
             y = y[np.random.randint(nens*samples, size=nens),:]
             
         else:
-            pass
+            rf_model_a = pickle.load(open("models/"+version+"rf_a", 'rb')) # load random forest model
+            rf_model_p = pickle.load(open("models/"+version+"rf_p", 'rb')) 
+            rf_model_h = pickle.load(open("models/"+version+"rf_h", 'rb')) 
+            
+            x = np.loadtxt('data/analysis/'+str(exp_ID)+'.csv',delimiter=',')
+
+            y_a = rf_model_a.predict(x)
+            y_p = rf_model_p.predict(x)
+            y_h = rf_model_h.predict(x)
+
+            # merge y - calculate uncertainty
+            # sort based on unc
+
             ####################### code for random forest ##########################
         
         # create folders if not there already
@@ -285,7 +298,43 @@ class DataGenerator_const:
         
         for i in range(nens):
             np.savetxt('data/online/analysis/'+str(i)+'.csv',analysis[:,i].reshape((1,-1)),delimiter=',',fmt=['%f']*3*n)
-            
+
+def train_rf(nens):
+    hparams = {
+        'version' : str(nens),
+        'n_estimators' : 10,
+        'max_depth' : 10,
+        'random_seed': 1
+    }
+
+    # load training data
+    x_train = np.loadtxt("data/background/train.csv", delimiter=',')
+    y_train = np.loadtxt("data/background/labels_rescaled.csv", delimiter=',', skiprows=1)
+
+    # train the model
+    model_a = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
+    model_a.fit(x_train, y_train[:,0])
+    model_p = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
+    model_p.fit(x_train, y_train[:,1])
+    model_h = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
+    model_h.fit(x_train, y_train[:,2])
+
+    # load test 
+    x_test = np.loadtxt("data/analysis/0.csv", delimiter=',')
+    y_test = np.loadtxt("data/val_labels_rescaled.csv", delimiter=',', skiprows=1)
+    
+    print("model_a score", model_a.score(x_test,y_test[:,0]))
+    print("model_p score", model_p.score(x_test,y_test[:,1]))
+    print("model_h score", model_h.score(x_test,y_test[:,2]))
+
+    with open('models/'+hparams["version"]+'rf_a.pkl', 'wb') as f:
+        pickle.dump(model_a, f, 'wb')
+    with open('models/'+hparams["version"]+'rf_p.pkl', 'wb') as f:
+        pickle.dump(model_p, f, 'wb')
+    with open('models/'+hparams["version"]+'rf_h.pkl', 'wb') as f:
+        pickle.dump(model_h, f, 'wb')
+
+
 def train_bnn(nens,epochs,samples,val_obs):
     '''
     Trains bnn on data generated with nens data assimilation ensemble members.
