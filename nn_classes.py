@@ -319,13 +319,17 @@ def train_rf(nens):
     model_h = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
     model_h.fit(x_train, y_train[:,2])
 
+
+    ############################################################ Remove code after     
     # load test 
     x_test = np.loadtxt("data/analysis/0.csv", delimiter=',')
     y_test = np.loadtxt("data/val_labels_rescaled.csv", delimiter=',', skiprows=1)
-    
+
     print("model_a score", model_a.score(x_test,y_test[:,0]))
     print("model_p score", model_p.score(x_test,y_test[:,1]))
     print("model_h score", model_h.score(x_test,y_test[:,2]))
+    ############################################################ Remove code after     
+
 
     with open('models/'+hparams["version"]+'rf_a.pkl', 'wb') as f:
         pickle.dump(model_a, f, 'wb')
