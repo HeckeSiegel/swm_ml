@@ -105,9 +105,12 @@ class DataGenerator_uniform:
         create_folder_path('data/background')
         data_train = sweq__(1.0*analysis_old,dte_train,n,n_train,mindex,nindex,1000+obs_ncyc*dte,labels_train[0,:],labels_train[1,:],labels_train[2,:])[:,:,-1]
         train_sample = np.zeros((1,750))
+        train_total = np.zeros((labels_train.shape[1],750))
         for i in range(labels_train.shape[1]):
             train_sample[0,:] = data_train[:,i]
-            np.savetxt('data/background/'+str(i)+'.csv',train_sample,delimiter=',',fmt=['%f']*3*n)
+            train_total[i,:] = data_train[:,i]
+            #np.savetxt('data/background/'+str(i)+'.csv',train_sample,delimiter=',',fmt=['%f']*3*n)
+        np.savetxt('data/background/train.csv',train_total,delimiter=',',fmt=['%f']*3*n)
         
         # true atmosphere states propagate forward in time
         truth = np.loadtxt('data/init_truth_'+str(nens)+'.csv',delimiter=',')
@@ -173,20 +176,15 @@ class DataGenerator_ml_init:
             y = y[np.random.randint(nens*samples, size=nens),:]
             
         else:
-            rf_model_a = pickle.load(open("models/"+version+"rf_a", 'rb')) # load random forest model
-            rf_model_p = pickle.load(open("models/"+version+"rf_p", 'rb')) 
-            rf_model_h = pickle.load(open("models/"+version+"rf_h", 'rb')) 
+            rf_model_a = pickle.load(open("models/"+version+"rf", 'rb')) # load random forest model
             
             x = np.loadtxt('data/analysis/'+str(exp_ID)+'.csv',delimiter=',')
 
-            y_a = rf_model_a.predict(x)
-            y_p = rf_model_p.predict(x)
-            y_h = rf_model_h.predict(x)
+            y = rf_model.predict(x)
 
             # merge y - calculate uncertainty
             # sort based on unc
 
-            ####################### code for random forest ##########################
         
         # create folders if not there already
         create_folder_path('data/online')
@@ -299,47 +297,35 @@ class DataGenerator_const:
         for i in range(nens):
             np.savetxt('data/online/analysis/'+str(i)+'.csv',analysis[:,i].reshape((1,-1)),delimiter=',',fmt=['%f']*3*n)
 
-def train_rf(nens):
+def train_rf(nens,n_estimator,max_depth):
     hparams = {
         'version' : str(nens),
-        'n_estimators' : 10,
-        'max_depth' : 10,
+        'n_estimators' : n_estimator,
+        'max_depth' : max_depth,
         'random_seed': 1
     }
 
     # load training data
     x_train = np.loadtxt("data/background/train.csv", delimiter=',')
     y_train = np.loadtxt("data/background/labels_rescaled.csv", delimiter=',', skiprows=1)
-
     # train the model
-    model_a = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
-    model_a.fit(x_train, y_train[:,0])
-    model_p = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
-    model_p.fit(x_train, y_train[:,1])
-    model_h = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
-    model_h.fit(x_train, y_train[:,2])
+    model_rf = RandomForestRegressor(max_depth=hparams["max_depth"], n_estimators=hparams["n_estimators"], random_state=hparams["random_seed"])
+    model_rf.fit(x_train, y_train)
 
-
-    ############################################################ Remove code after     
-    # load test 
-    x_test = np.loadtxt("data/analysis/0.csv", delimiter=',')
+    # load test
+    x_test = np.zeros((100,750))
+    for i in range(100):
+        x_test[i,:] = np.loadtxt("data/truth/"+str(i)+".csv", delimiter=',')
+        
+    #x_test = np.loadtxt("data/analysis/0.csv", delimiter=',')
     y_test = np.loadtxt("data/val_labels_rescaled.csv", delimiter=',', skiprows=1)
-
-    print("model_a score", model_a.score(x_test,y_test[:,0]))
-    print("model_p score", model_p.score(x_test,y_test[:,1]))
-    print("model_h score", model_h.score(x_test,y_test[:,2]))
-    ############################################################ Remove code after     
-
-
-    with open('models/'+hparams["version"]+'rf_a.pkl', 'wb') as f:
-        pickle.dump(model_a, f, 'wb')
-    with open('models/'+hparams["version"]+'rf_p.pkl', 'wb') as f:
-        pickle.dump(model_p, f, 'wb')
-    with open('models/'+hparams["version"]+'rf_h.pkl', 'wb') as f:
-        pickle.dump(model_h, f, 'wb')
+    
+    print("model_rf score", model_rf.score(x_test,y_test[:100,:])) #np.full((x_test.shape[0],3),y_test[0,:])
+    
+    pickle.dump(model_rf, open("models/"+str(nens)+"rf", 'wb'))
 
 
-def train_bnn(nens,epochs,samples,val_obs):
+def train_bnn(nens,epochs,val_obs):
     '''
     Trains bnn on data generated with nens data assimilation ensemble members.
     nens: number of analysis/background ensemble members used to generate training data
@@ -619,12 +605,12 @@ def DA(mode,DA_cycles_total,exp_ID_start,exp_ID_end,nens,samples,obs_ncyc):
             create_folder_path('data/online/metrics/'+mode+'/'+str(nens)+'/'+str(exp_ID))    
             np.savetxt('data/online/metrics/'+mode+'/'+str(nens)+'/'+str(exp_ID)+'/'+str(cycle)+'.csv', rmse_spread_params_vars, header = 'rmse alpha/u,rmse phic/h,rmse h/r,spread alpha/u,spread phic/h,spread h/r', delimiter=',', fmt=['%e']*6)
             
-def save_parameter_preds(nens,n_train,exp_ID_total,samples,val_obs):
+def save_parameter_preds_bnn(nens,n_train,exp_ID_total,samples,val_obs):
     '''
     Saves the parameter predictions + ground truths for each analysis ensemble member in 'data/parameters/<nens>_nens/<n_train>_ntrain/<exp_ID>/' for 
     visualisation/calculation of metrics/etc....
     '''
-    create_folder_path('data/parameters')
+    create_folder_path('data/parameters_bnn')
     for exp_ID in range(exp_ID_total):
         version = str(nens)
         hparams = load_hparam(version)
@@ -636,7 +622,7 @@ def save_parameter_preds(nens,n_train,exp_ID_total,samples,val_obs):
         guide = saved_model_dict['guide']
         pyro.get_param_store().load('models/'+version+'_params.pt')
         model.eval()
-        create_folder_path('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID))
+        create_folder_path('data/parameters_bnn/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID))
 
         predictive = Predictive(model, guide=guide, num_samples=samples)
         
@@ -646,42 +632,70 @@ def save_parameter_preds(nens,n_train,exp_ID_total,samples,val_obs):
         else:
             x = np.loadtxt('data/analysis/'+str(exp_ID)+'.csv',delimiter=',')
         
-        np.savetxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/input.csv',x,delimiter=',',fmt=['%f']*x.shape[1],comments='')
+        np.savetxt('data/parameters_bnn/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/input.csv',x,delimiter=',',fmt=['%f']*x.shape[1],comments='')
         x = torch.from_numpy(x)
 
         y = predictive(x.float())['obs'].detach().numpy().squeeze()
         for i in range(nens):
-            np.savetxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/'+str(i)+'_output.csv',y[:,i,:],delimiter=',',fmt=['%f']*3,header='alpha,phi,h',comments='')
+            np.savetxt('data/parameters_bnn/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/'+str(i)+'_output.csv',y[:,i,:],delimiter=',',fmt=['%f']*3,header='alpha,phi,h',comments='')
 
         # truth parameters
         y_truth = np.loadtxt('data/truth/labels_rescaled.csv',delimiter=',',skiprows=1)[exp_ID,:]
-        np.savetxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/truth_output.csv',y_truth.reshape((1,3)),delimiter=',',fmt=['%f']*3,header='alpha,phi,h',comments='')
+        np.savetxt('data/parameters_bnn/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/truth_output.csv',y_truth.reshape((1,3)),delimiter=',',fmt=['%f']*3,header='alpha,phi,h',comments='')
         
-def plot_parameters(nens,n_train,n_val,samples):
+def save_parameter_preds_rf(nens,n_train,exp_ID_total):
+    '''
+    Saves the parameter predictions + ground truths for each analysis ensemble member in 'data/parameters/<nens>_nens/<n_train>_ntrain/<exp_ID>/' for 
+    visualisation/calculation of metrics/etc....
+    '''
+    
+    for exp_ID in range(exp_ID_total):
+        version = str(nens)
+        create_folder_path('data/parameters_rf/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID))
+        model = pickle.load(open("models/"+version+"rf", 'rb')) # load random forest model
+        
+        x = np.loadtxt('data/analysis/'+str(exp_ID)+'.csv',delimiter=',')
+        
+        np.savetxt('data/parameters_rf/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/input.csv',x,delimiter=',',fmt=['%f']*x.shape[1],comments='')
+        
+        y = model.predict(x)
+        np.savetxt('data/parameters_rf/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/output.csv',y,delimiter=',',fmt=['%f']*3,header='alpha,phi,h',comments='')
+
+        # truth parameters
+        y_truth = np.loadtxt('data/truth/labels_rescaled.csv',delimiter=',',skiprows=1)[exp_ID,:]
+        np.savetxt('data/parameters_rf/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/truth_output.csv',y_truth.reshape((1,3)),delimiter=',',fmt=['%f']*3,header='alpha,phi,h',comments='')
+        
+def plot_parameters(ml_model,nens,n_train,n_val,samples):
     '''
     Plots mean and standard deviation of all <n_val> ground truth parameters using bnn trained with nens analysis ensemble members ans n_train
     training samples.
     '''
     params_truth = np.zeros((3,n_val))
-    params_bnn = np.zeros((3,n_val,nens,samples))
-    for i in range(n_val):
-        params_truth[:,i] = np.loadtxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(i)+'/truth_output.csv',delimiter=',',skiprows=1)
-        for j in range(nens):
-            params_bnn[:,i,j,:] = np.loadtxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(i)+'/'+str(j)+'_output.csv',delimiter=',',skiprows=1).T
+    if ml_model == 'bnn':
+        params_ml = np.zeros((3,n_val,nens,samples))
+        for i in range(n_val):
+            params_truth[:,i] = np.loadtxt('data/parameters_'+ml_model+'/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(i)+'/truth_output.csv',delimiter=',',skiprows=1)
+            for j in range(nens):
+                params_ml[:,i,j,...] = np.loadtxt('data/parameters_'+ml_model+'/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(i)+'/'+str(j)+'_output.csv',delimiter=',',skiprows=1).T
+    else:
+        params_ml = np.zeros((3,n_val,nens))
+        for i in range(n_val):
+            params_truth[:,i] = np.loadtxt('data/parameters_'+ml_model+'/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(i)+'/truth_output.csv',delimiter=',',skiprows=1)
+            params_ml[:,i,:] = np.loadtxt('data/parameters_'+ml_model+'/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(i)+'/output.csv',delimiter=',',skiprows=1).T
 
-    params_bnn_mean = np.mean(params_bnn.reshape((3,n_val,-1)),axis=2)
-    params_bnn_std = np.std(params_bnn.reshape((3,n_val,-1)),axis=2)
+    params_ml_mean = np.mean(params_ml.reshape((3,n_val,-1)),axis=2)
+    params_ml_std = np.std(params_ml.reshape((3,n_val,-1)),axis=2)
     
     fig, ax = plt.subplots(1,3,figsize = (20,6))
 
     params_names = ['alpha','phi','hr']
-    ylabels = ['bnn prediction','','']
+    ylabels = [ml_model+' prediction','','']
 
-    rmse = np.mean((params_bnn_mean-params_truth)**2,axis=1)**(1/2)
-    spread = np.mean(params_bnn_std,axis=1)
+    rmse = np.mean((params_ml_mean-params_truth)**2,axis=1)**(1/2)
+    spread = np.mean(params_ml_std,axis=1)
 
     for i in range(3):
-        ax[i].errorbar(x=params_truth[i,:],y=params_bnn_mean[i,:],yerr=params_bnn_std[i,:],fmt='.',color='gray')
+        ax[i].errorbar(x=params_truth[i,:],y=params_ml_mean[i,:],yerr=params_ml_std[i,:],fmt='.',color='gray')
         ax[i].plot(params_truth[i,:],params_truth[i,:],'-r',label='perfect prediction')
         ax[i].set_title(params_names[i]+' (RMSE:'+str(round(rmse[i],2))+', spread:'+str(round(spread[i],2))+')')
         ax[i].set_ylabel(ylabels[i])
@@ -689,24 +703,28 @@ def plot_parameters(nens,n_train,n_val,samples):
     plt.legend()
     return rmse,spread
     
-def plot_parameters_hist(exp_ID,nens,n_train,samples):
+def plot_parameters_hist(ml_model,exp_ID,nens,n_train,samples):
     '''
     Plots histogramm of parameter predictions of ground truth parameters related to <exp_ID> using bnn trained with nens analysis ensemble members ans n_train
     training samples. Total number of parameter predictions = nens*samples
     '''
     fig, ax = plt.subplots(3,1,figsize = (6,20))
 
-    params_truth = np.loadtxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/truth_output.csv',delimiter=',',skiprows=1)
-    params_bnn = np.zeros((3,nens,samples))
-    for j in range(nens):
-        params_bnn[:,j,:] = np.loadtxt('data/parameters/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/'+str(j)+'_output.csv',delimiter=',',skiprows=1).T
+    if ml_model=='bnn':
+        params_truth = np.loadtxt('data/parameters_bnn/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/truth_output.csv',delimiter=',',skiprows=1)
+        params_ml = np.zeros((3,nens,samples))
+        for j in range(nens):
+            params_ml[:,j,:] = np.loadtxt('data/parameters_bnn/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/'+str(j)+'_output.csv',delimiter=',',skiprows=1).T
+    else:
+        params_truth = np.loadtxt('data/parameters_rf/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/truth_output.csv',delimiter=',',skiprows=1)
+        params_ml = np.loadtxt('data/parameters_rf/'+str(nens)+'_nens/'+str(n_train)+'_ntrain/'+str(exp_ID)+'/output.csv',delimiter=',',skiprows=1).T
 
-    params_bnn = params_bnn.reshape((3,-1))
+    params_ml = params_ml.reshape((3,-1))
     params_names = ['alpha','phi','hr']
     ylabels = ['','','']
 
     for i in range(3):
-        sn.histplot(params_bnn[i,:],ax=ax[i],label='bnn')
+        sn.histplot(params_ml[i,:],ax=ax[i],label='bnn')
         ax[i].axvline(params_truth[i],color='red',label='truth')
         ax[i].set_xlim(0, 1)
         ax[i].set_title(params_names[i])
