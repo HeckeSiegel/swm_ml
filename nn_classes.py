@@ -176,7 +176,7 @@ class DataGenerator_ml_init:
             y = y[np.random.randint(nens*samples, size=nens),:]
             
         else:
-            rf_model_a = pickle.load(open("models/"+version+"rf", 'rb')) # load random forest model
+            rf_model = pickle.load(open("models/"+version+"rf", 'rb')) # load random forest model
             
             x = np.loadtxt('data/analysis/'+str(exp_ID)+'.csv',delimiter=',')
 
