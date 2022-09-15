@@ -185,12 +185,13 @@ class DataGenerator_ml_init:
 
             # calculate uncertainty
             x_train = 0 # load training data
-            
+
             unc = fci.random_forest_error(rf_model, x_train, x)
             # sort based on unc
             sorted__unc_index = np.argsort(-unc, kind='stable')
             x = x[sorted__unc_index]
-
+            unc = unc[sorted__unc_index]
+            print(unc)
             # select top K of x
 
 
