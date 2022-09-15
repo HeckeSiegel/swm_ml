@@ -27,6 +27,7 @@ from tqdm.auto import trange, tqdm
 from pyro import poutine
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
+import forestci as fci
 
 def create_folder_path(path):
     MYDIR = (path)
@@ -182,8 +183,16 @@ class DataGenerator_ml_init:
 
             y = rf_model.predict(x)
 
-            # merge y - calculate uncertainty
+            # calculate uncertainty
+            x_train = 0 # load training data
+            
+            unc = fci.random_forest_error(rf_model, x_train, x)
             # sort based on unc
+            sorted__unc_index = np.argsort(-unc, kind='stable')
+            x = x[sorted__unc_index]
+
+            # select top K of x
+
 
         
         # create folders if not there already
